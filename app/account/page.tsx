@@ -11,6 +11,7 @@ type Movie = {
   status: "PLAN_TO_WATCH" | "HAVE_WATCHED" | string;
   review?: string | null;
   rating?: number | null;
+  imageUrl?: string | null;
 };
 
 type Filter = "ALL" | "PLAN_TO_WATCH" | "HAVE_WATCHED";
@@ -32,13 +33,17 @@ export default function AccountPage() {
   const [moviesError, setMoviesError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
 
-  // Add/edit form fields (for "Add movie" section)
+  // Add/edit form fields
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState<"PLAN_TO_WATCH" | "HAVE_WATCHED">(
     "PLAN_TO_WATCH"
   );
   const [review, setReview] = useState("");
   const [rating, setRating] = useState<number | null>(null);
+  const [posterUrl, setPosterUrl] = useState("");
+
+  // search
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Auth guard
   useEffect(() => {
@@ -110,7 +115,8 @@ export default function AccountPage() {
 
     const payload: any = {
       title: title.trim(),
-      status
+      status,
+      imageUrl: posterUrl.trim() || null
     };
 
     if (status === "HAVE_WATCHED") {
@@ -144,6 +150,7 @@ export default function AccountPage() {
       setStatus("PLAN_TO_WATCH");
       setRating(null);
       setReview("");
+      setPosterUrl("");
 
       await fetchMovies();
     } catch (err: any) {
@@ -226,6 +233,7 @@ export default function AccountPage() {
         status: "HAVE_WATCHED" as const,
         rating: ratingValue,
         review: reviewText.trim() || null
+        // keep existing imageUrl as-is in DB
       };
 
       const res = await fetch(
@@ -287,10 +295,22 @@ export default function AccountPage() {
     }
   }
 
-  const filteredMovies =
+  // status + search filtering
+  const statusFiltered =
     filter === "ALL"
       ? movies
       : movies.filter((m) => m.status === filter);
+
+  const filteredMovies = statusFiltered.filter((m) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+
+    const inTitle = m.title.toLowerCase().includes(q);
+    const inStatus = m.status.toLowerCase().includes(q);
+    const inReview = (m.review ?? "").toLowerCase().includes(q);
+
+    return inTitle || inStatus || inReview;
+  });
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-gray-100">
@@ -387,6 +407,18 @@ export default function AccountPage() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    Poster URL (optional)
+                  </label>
+                  <input
+                    className="mt-1 w-full rounded bg-[#1f1f1f] px-3 py-2 text-sm text-white outline-none ring-[#f5c518]/40 placeholder:text-gray-500 focus:ring-2"
+                    placeholder="https://example.com/poster.jpg"
+                    value={posterUrl}
+                    onChange={(e) => setPosterUrl(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400">
                     Status
                   </label>
                   <select
@@ -454,41 +486,61 @@ export default function AccountPage() {
 
           {/* Movies list */}
           <section>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-white">
-                Your movies
-              </h2>
-              <div className="flex gap-2 text-xs">
-                <button
-                  onClick={() => setFilter("ALL")}
-                  className={`rounded-full px-3 py-1 ${
-                    filter === "ALL"
-                      ? "bg-[#f5c518] text-black"
-                      : "bg-[#1f1f1f] text-gray-300"
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setFilter("PLAN_TO_WATCH")}
-                  className={`rounded-full px-3 py-1 ${
-                    filter === "PLAN_TO_WATCH"
-                      ? "bg-[#f5c518] text-black"
-                      : "bg-[#1f1f1f] text-gray-300"
-                  }`}
-                >
-                  Plan to Watch
-                </button>
-                <button
-                  onClick={() => setFilter("HAVE_WATCHED")}
-                  className={`rounded-full px-3 py-1 ${
-                    filter === "HAVE_WATCHED"
-                      ? "bg-[#f5c518] text-black"
-                      : "bg-[#1f1f1f] text-gray-300"
-                  }`}
-                >
-                  Have Watched
-                </button>
+            <div className="mb-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-white">
+                  Your movies
+                </h2>
+                <div className="flex gap-2 text-xs">
+                  <button
+                    onClick={() => setFilter("ALL")}
+                    className={`rounded-full px-3 py-1 ${
+                      filter === "ALL"
+                        ? "bg-[#f5c518] text-black"
+                        : "bg-[#1f1f1f] text-gray-300"
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilter("PLAN_TO_WATCH")}
+                    className={`rounded-full px-3 py-1 ${
+                      filter === "PLAN_TO_WATCH"
+                        ? "bg-[#f5c518] text-black"
+                        : "bg-[#1f1f1f] text-gray-300"
+                    }`}
+                  >
+                    Plan to Watch
+                  </button>
+                  <button
+                    onClick={() => setFilter("HAVE_WATCHED")}
+                    className={`rounded-full px-3 py-1 ${
+                      filter === "HAVE_WATCHED"
+                        ? "bg-[#f5c518] text-black"
+                        : "bg-[#1f1f1f] text-gray-300"
+                    }`}
+                  >
+                    Have Watched
+                  </button>
+                </div>
+              </div>
+
+              {/* Search input */}
+              <div>
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search your movies by title, status, or review text"
+                  className="w-full rounded-md border border-[#333] bg-[#121212] px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500"
+                />
+                {searchQuery.trim() && (
+                  <p className="mt-1 text-xs text-gray-400">
+                    Showing results for{" "}
+                    <span className="font-semibold">
+                      "{searchQuery}"
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -525,7 +577,16 @@ export default function AccountPage() {
                     key={movie.id}
                     className="flex gap-3 rounded-2xl border border-[#2f2f2f] bg-[#151515] p-3 shadow-md shadow-black/30"
                   >
-                    <div className="h-20 w-14 flex-shrink-0 rounded bg-gradient-to-b from-[#333] to-[#111]" />
+                    {/* Poster */}
+                    <div className="h-20 w-14 flex-shrink-0 overflow-hidden rounded bg-gradient-to-b from-[#333] to-[#111]">
+                      {movie.imageUrl ? (
+                        <img
+                          src={movie.imageUrl}
+                          alt={movie.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
 
                     <div className="flex flex-1 flex-col justify-between">
                       <div>
@@ -573,7 +634,7 @@ export default function AccountPage() {
                         onClick={() => markWatched(movie)}
                         className="rounded bg-[#1f1f1f] px-2 py-1 text-green-300 hover:bg-[#252525]"
                       >
-                        Mark watched / review
+                        Mark watched and review
                       </button>
                       <button
                         onClick={() =>
@@ -581,7 +642,7 @@ export default function AccountPage() {
                         }
                         className="rounded bg-[#1f1f1f] px-2 py-1 text-blue-300 hover:bg-[#252525]"
                       >
-                        Mark to watch
+                        Mark plan to watch
                       </button>
                       <button
                         onClick={() => deleteMovie(movie.id)}
@@ -600,3 +661,6 @@ export default function AccountPage() {
     </div>
   );
 }
+
+
+

@@ -16,11 +16,18 @@ type DiscoverMovie = {
 
 type RatingSummary = {
   title: string;
-  averageRating: number; // e.g. 4.3
-  roundedRating: number; // e.g. 4
+  averageRating: number;
+  roundedRating: number;
   ratingCount: number;
 };
 
+type MovieReview = {
+  username: string;
+  rating: number | null;
+  review: string;
+};
+
+//add more movies here as desired
 const DISCOVER_MOVIES: DiscoverMovie[] = [
   {
     id: "disc-1",
@@ -80,6 +87,21 @@ export default function DiscoverPage() {
 
   const [ratings, setRatings] = useState<RatingSummary[]>([]);
 
+  // reviews
+  const [reviewsByTitle, setReviewsByTitle] = useState<
+    Record<string, MovieReview[]>
+  >({});
+  const [openReviewsTitle, setOpenReviewsTitle] = useState<string | null>(null);
+  const [reviewsLoadingTitle, setReviewsLoadingTitle] = useState<string | null>(
+    null
+  );
+  const [reviewsErrorTitle, setReviewsErrorTitle] = useState<string | null>(
+    null
+  );
+
+  // search
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Auth guard
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -93,7 +115,7 @@ export default function DiscoverPage() {
     setCurrentUser(user);
   }, [router]);
 
-  // Fetch global ratings from /ratings (no auth needed)
+  // Fetch global ratings
   useEffect(() => {
     const fetchRatings = async () => {
       try {
@@ -139,7 +161,8 @@ export default function DiscoverPage() {
         },
         body: JSON.stringify({
           title: movie.title,
-          status: "PLAN_TO_WATCH"
+          status: "PLAN_TO_WATCH",
+          imageUrl: movie.imageUrl
         })
       });
 
@@ -202,7 +225,8 @@ export default function DiscoverPage() {
           title: movie.title,
           status: "HAVE_WATCHED",
           rating: ratingValue,
-          review: reviewText.trim() || null
+          review: reviewText.trim() || null,
+          imageUrl: movie.imageUrl 
         })
       });
 
@@ -219,6 +243,52 @@ export default function DiscoverPage() {
       setBusyId(null);
     }
   }
+
+  async function toggleReviews(movie: DiscoverMovie) {
+    const title = movie.title;
+
+    if (openReviewsTitle === title) {
+      setOpenReviewsTitle(null);
+      return;
+    }
+
+    if (reviewsByTitle[title]) {
+      setOpenReviewsTitle(title);
+      return;
+    }
+
+    try {
+      setReviewsErrorTitle(null);
+      setReviewsLoadingTitle(title);
+
+      const res = await fetch(
+        `${API_BASE_URL}/reviews?title=${encodeURIComponent(title)}`
+      );
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data: MovieReview[] = await res.json();
+      setReviewsByTitle((prev) => ({ ...prev, [title]: data }));
+      setOpenReviewsTitle(title);
+    } catch (err) {
+      console.error(err);
+      setReviewsErrorTitle(title);
+    } finally {
+      setReviewsLoadingTitle(null);
+    }
+  }
+
+  const filteredMovies = DISCOVER_MOVIES.filter((movie) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+
+    const inTitle = movie.title.toLowerCase().includes(q);
+    const inGenres = movie.genres.some((g) =>
+      g.toLowerCase().includes(q)
+    );
+    return inTitle || inGenres;
+  });
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-gray-100">
@@ -260,14 +330,33 @@ export default function DiscoverPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
-        <section className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-1">
+        <section className="mb-4">
+          <h1 className="text-3xl font-bold text-white mb-2">
             Discover movies
           </h1>
-          <p className="text-sm text-gray-300">
+          <p className="text-sm text-gray-300 mb-3">
             Browse a curated list of movies and add them to your personal
             watchlist or mark them as watched with a review.
           </p>
+
+          {/* Search bar */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by title or genre (ex: 'dark', 'sci-fi', 'romance')"
+              className="w-full rounded-md border border-[#333] bg-[#121212] px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#f5c518]"
+            />
+          </div>
+
+          {searchQuery.trim() !== "" && (
+            <p className="mt-1 text-xs text-gray-400">
+              Showing results for <span className="font-semibold">"{searchQuery}"</span> (
+              {filteredMovies.length} match
+              {filteredMovies.length === 1 ? "" : "es"})
+            </p>
+          )}
         </section>
 
         {error && (
@@ -277,80 +366,142 @@ export default function DiscoverPage() {
         )}
 
         <section className="grid gap-4 md:grid-cols-2">
-          {DISCOVER_MOVIES.map((movie) => {
+          {filteredMovies.map((movie) => {
             const global = getGlobalSummary(movie.title);
 
             return (
               <article
                 key={movie.id}
-                className="flex gap-3 rounded-2xl border border-[#2f2f2f] bg-[#151515] p-3 shadow-md shadow-black/30"
+                className="flex flex-col gap-3 rounded-2xl border border-[#2f2f2f] bg-[#151515] p-3 shadow-md shadow-black/30"
               >
-                <div className="h-24 w-16 flex-shrink-0 overflow-hidden rounded bg-[#111]">
-                  <img
-                    src={movie.imageUrl}
-                    alt={movie.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div className="flex flex-1 flex-col justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-white">
-                      {movie.title}{" "}
-                      <span className="text-xs text-gray-400">
-                        ({movie.year})
-                      </span>
-                    </h2>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {movie.genres.join(" • ")}
-                    </p>
-                    <p className="mt-2 text-xs text-gray-300">
-                      {movie.description}
-                    </p>
+                <div className="flex gap-3">
+                  <div className="h-24 w-16 flex-shrink-0 overflow-hidden rounded bg-[#111]">
+                    <img
+                      src={movie.imageUrl}
+                      alt={movie.title}
+                      className="h-full w-full object-cover"
+                    />
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                    <div className="flex gap-2">
-                      <button
-                        disabled={!sessionToken || busyId === movie.id}
-                        onClick={() => addToList(movie)}
-                        className="rounded bg-[#1f1f1f] px-3 py-1 text-blue-300 hover:bg-[#252525] disabled:opacity-50"
-                      >
-                        {busyId === movie.id
-                          ? "Adding..."
-                          : "Add to My List"}
-                      </button>
-                      <button
-                        disabled={!sessionToken || busyId === movie.id}
-                        onClick={() => markWatched(movie)}
-                        className="rounded bg-[#1f1f1f] px-3 py-1 text-green-300 hover:bg-[#252525] disabled:opacity-50"
-                      >
-                        {busyId === movie.id
-                          ? "Saving..."
-                          : "Mark Watched & Review"}
-                      </button>
+                  <div className="flex flex-1 flex-col justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold text-white">
+                        {movie.title}{" "}
+                        <span className="text-xs text-gray-400">
+                          ({movie.year})
+                        </span>
+                      </h2>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {movie.genres.join(" • ")}
+                      </p>
+                      <p className="mt-2 text-xs text-gray-300">
+                        {movie.description}
+                      </p>
                     </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          disabled={!sessionToken || busyId === movie.id}
+                          onClick={() => addToList(movie)}
+                          className="rounded bg-[#1f1f1f] px-3 py-1 text-blue-300 hover:bg-[#252525] disabled:opacity-50"
+                        >
+                          {busyId === movie.id
+                            ? "Adding..."
+                            : "Add to My List"}
+                        </button>
+                        <button
+                          disabled={!sessionToken || busyId === movie.id}
+                          onClick={() => markWatched(movie)}
+                          className="rounded bg-[#1f1f1f] px-3 py-1 text-green-300 hover:bg-[#252525] disabled:opacity-50"
+                        >
+                          {busyId === movie.id
+                            ? "Saving..."
+                            : "Mark Watched & Review"}
+                        </button>
+                        <button
+                          onClick={() => toggleReviews(movie)}
+                          className="rounded bg-[#1f1f1f] px-3 py-1 text-yellow-300 hover:bg-[#252525]"
+                        >
+                          {openReviewsTitle === movie.title
+                            ? "Hide Reviews"
+                            : reviewsLoadingTitle === movie.title
+                            ? "Loading..."
+                            : "View Reviews"}
+                        </button>
+                      </div>
 
-                    {global && (
-                      <span className="ml-1 flex items-center gap-1 text-yellow-300">
-                        <span className="font-mono">
-                          {renderStars(global.roundedRating)}
+                      {global && (
+                        <span className="ml-1 flex items-center gap-1 text-yellow-300">
+                          <span className="font-mono">
+                            {renderStars(global.roundedRating)}
+                          </span>
+                          <span className="text-[10px] text-gray-300">
+                            {global.averageRating.toFixed(1)}/5 from{" "}
+                            {global.ratingCount} rating
+                            {global.ratingCount === 1 ? "" : "s"} (global)
+                          </span>
                         </span>
-                        <span className="text-[10px] text-gray-300">
-                          {global.averageRating.toFixed(1)}/5 from{" "}
-                          {global.ratingCount} rating
-                          {global.ratingCount === 1 ? "" : "s"} (global)
-                        </span>
-                      </span>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {openReviewsTitle === movie.title && (
+                  <div className="mt-1 w-full rounded-lg bg-[#101010] border border-[#333] p-2">
+                    {reviewsErrorTitle === movie.title && (
+                      <p className="text-xs text-red-300">
+                        Failed to load reviews. Try again later.
+                      </p>
+                    )}
+
+                    {reviewsByTitle[movie.title]?.length === 0 &&
+                      !reviewsErrorTitle && (
+                        <p className="text-xs text-gray-400">
+                          No reviews yet. Be the first to review this movie!
+                        </p>
+                      )}
+
+                    {reviewsByTitle[movie.title]?.map((rev, idx) => (
+                      <div
+                        key={idx}
+                        className="border-t border-[#333] first:border-t-0 py-1.5"
+                      >
+                        <div className="flex items-center justify-between text-[11px] text-gray-300">
+                          <span className="font-semibold">
+                            {rev.username ?? "User"}
+                          </span>
+                          {rev.rating != null && (
+                            <span className="text-yellow-300">
+                              {renderStars(rev.rating)}{" "}
+                              <span className="text-[10px] text-gray-400">
+                                ({rev.rating}/5)
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-gray-200">
+                          {rev.review}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
             );
           })}
         </section>
+
+        {filteredMovies.length === 0 && (
+          <p className="mt-6 text-center text-sm text-gray-400">
+            No movies match your search. Try a different title or genre.
+          </p>
+        )}
       </main>
     </div>
   );
 }
+
+
+
 
 
 
